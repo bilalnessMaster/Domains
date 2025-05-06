@@ -10,12 +10,22 @@ use Inertia\Inertia;
 class DomainController extends Controller
 {
 
-    public function show()
+    public function show(Request $request)
     {
-        // Get domains for the authenticated user with pagination
-        $domains = Domain::where('user_id', Auth::user()->id)
-            ->latest()
-            ->paginate(10); // 10 items per page
+
+       $query = Domain::where('user_id', Auth::id());
+
+    // Apply search filter if search query exists
+    if ($request->has('search')) {
+        $search = $request->get('search');
+        $query->where('name', 'like', "%{$search}%");
+    }
+
+    // Paginate with 10 items per page
+    $domains = $query->latest()->paginate(10);
+
+    // Append the search query to the pagination links
+    $domains->appends($request->only('search'));
 
         // Get summary statistics
         $stats = [

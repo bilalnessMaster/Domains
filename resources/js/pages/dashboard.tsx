@@ -1,22 +1,25 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+} from "@/components/ui/popover"
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
 import { Head, Link } from '@inertiajs/react';
 import {
     CalendarClock,
     Globe,
-    ShieldCheck,
-    AlertCircle,
     Search,
     BarChart3,
-    ArrowUpRight,
     CheckCircle,
-    XCircle,
     Filter,
     Plus,
     RefreshCw,
     MoreHorizontal,
-    Delete,
     Trash
 } from 'lucide-react';
 
@@ -57,31 +60,43 @@ type DashboardProps = {
     };
     totalValue: number;
 };
+const calculateDaysUntil = (dateString: string) => {
+    const today: any = new Date();
+    const expiryDate: any = new Date(dateString);
+    const diffTime = expiryDate - today;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays;
+};
+
 
 export default function Dashboard({ domains, stats, totalValue }: DashboardProps) {
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedTab, setSelectedTab] = useState('all');
-
-    const filteredDomains = domains.data.filter(domain => {
+    const [filteredDomains, setFilterDomain] = useState(domains.data.filter(domain => {
         if (selectedTab === 'expiring' && calculateDaysUntil(domain.expiry_date) > 30) return false;
         if (selectedTab === 'for_sale' && !domain.for_sale) return false;
         if (selectedTab === 'expired' && domain.status !== 'expired') return false;
-        return domain.name.toLowerCase().includes(searchQuery.toLowerCase());
-    });
+        return domain;
+    }))
+    const totalProfit = domains.data.reduce((acc, domain) => acc += domain?.current_value ?? 0 - domain?.purchase_price, 0)
 
-    const calculateDaysUntil = (dateString: string) => {
-        const today: any = new Date();
-        const expiryDate: any = new Date(dateString);
-        const diffTime = expiryDate - today;
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        return diffDays;
-    };
+    useEffect(() => {
+        const filteredDomainss = domains.data.filter(domain => {
+            if (selectedTab === 'expiring' && calculateDaysUntil(domain.expiry_date) > 30) return false;
+            if (selectedTab === 'for_sale' && !domain.for_sale) return false;
+            if (selectedTab === 'expired' && domain.status !== 'expired') return false;
+            return domain;
+        });
+        setFilterDomain(filteredDomainss);
+    }, [selectedTab])
 
     const getStatusBadge = (status: string, expiryDate: string) => {
         const daysUntil = calculateDaysUntil(expiryDate);
-
         if (status === 'expired') {
-            return { text: 'Expired', class: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400' };
+            return { text: 'Expired', class: 'bg-red-100 text-red-800 dark:bg-orange-900/30 dark:text-orange-400' };
+        }
+        if (status === 'sold') {
+            return { text: 'Sold', class: 'bg-orange-100 text-orange-800 dark:bg-red-900/30 dark:text-red-400' };
         }
         if (daysUntil <= 30) {
             return { text: 'Expiring', class: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400' };
@@ -99,7 +114,7 @@ export default function Dashboard({ domains, stats, totalValue }: DashboardProps
             days: calculateDaysUntil(domain.expiry_date),
             price: domain?.renewal_cost || domain.purchase_price
         }));
-
+console.log(domains);
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title="Domain Manager Dashboard" />
@@ -138,8 +153,8 @@ export default function Dashboard({ domains, stats, totalValue }: DashboardProps
 
                     <div className="flex items-center justify-between rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
                         <div>
-                            <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Portfolio Value</p>
-                            <p className="text-2xl font-bold">${totalValue.toLocaleString()}</p>
+                            <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Revenue</p>
+                            <p className="text-2xl font-bold">${totalProfit.toLocaleString()}</p>
                         </div>
                         <div className="rounded-full bg-purple-100 p-2 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400">
                             <BarChart3 size={24} />
@@ -165,18 +180,70 @@ export default function Dashboard({ domains, stats, totalValue }: DashboardProps
                             <div className="flex flex-wrap items-center gap-2">
                                 <div className="relative flex-1">
                                     <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500 dark:text-gray-400" />
-                                    <input
+                                    <Input
                                         type="text"
                                         placeholder="Search domains..."
                                         className="w-full rounded-md border border-gray-300 py-2 pl-8 pr-4 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:focus:border-blue-500"
                                         value={searchQuery}
+
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter' && !e.shiftKey) {
+                                                e.preventDefault();
+                                                window.location = `dashboard?search=${searchQuery}`;
+                                                console.log(searchQuery);
+                                            }
+                                        }}
                                         onChange={(e) => setSearchQuery(e.target.value)}
                                     />
                                 </div>
-                                <button className="flex items-center gap-1 rounded-md border border-gray-300 px-3 py-2 text-sm font-medium hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700">
-                                    <Filter size={16} />
-                                    Filter
-                                </button>
+                                <Popover>
+                                    <PopoverTrigger className="flex items-center gap-1 rounded-md border border-gray-300 px-3 py-2 text-sm font-medium hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700">
+                                        <Filter size={16} />
+                                        Filter
+                                    </PopoverTrigger>
+                                    <PopoverContent>
+                                        <form>
+                                            <div className="grid gap-4">
+                                                <div className="space-y-2">
+                                                    <h4 className="font-medium leading-none">Filters</h4>
+                                                    <p className="text-sm text-muted-foreground">
+                                                        Length of the name  site.
+                                                    </p>
+                                                </div>
+                                                <div className="grid gap-2">
+                                                    <div className="grid grid-cols-3 items-center gap-4">
+                                                        <Label htmlFor="width">Min</Label>
+                                                        <Input
+                                                            id="width"
+                                                            type="number"
+                                                            className="col-span-2 h-8"
+                                                        />
+                                                    </div>
+                                                    <div className="grid grid-cols-3 items-center gap-4">
+                                                        <Label htmlFor="maxWidth">Max</Label>
+                                                        <Input
+                                                            id="maxWidth"
+                                                            type="number"
+                                                            className="col-span-2 h-8"
+                                                        />
+                                                    </div>
+                                                    <div className="grid grid-cols-3 items-center gap-4">
+                                                        <Label htmlFor="maxWidth">TLDs</Label>
+                                                        <Input
+                                                            id="maxWidth"
+                                                            placeholder=".com , .net"
+                                                            className="col-span-2 h-8"
+                                                        />
+                                                    </div>
+
+                                                </div>
+                                            </div>
+
+                                        </form>
+
+                                    </PopoverContent>
+
+                                </Popover>
                                 <button className="flex items-center gap-1 rounded-md border border-gray-300 px-3 py-2 text-sm font-medium hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700">
                                     <RefreshCw size={16} />
                                     Refresh
@@ -337,7 +404,7 @@ export default function Dashboard({ domains, stats, totalValue }: DashboardProps
                                                     </div>
                                                     <div className="text-right">
                                                         <p className="font-medium">${domain.price}</p>
-                                                        {/* <a 
+                                                        {/* <a
                               href={route('domains.renew', domain.name)}
                               className="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
                             >
@@ -355,7 +422,7 @@ export default function Dashboard({ domains, stats, totalValue }: DashboardProps
                                 </ul>
                             </div>
                             <div className="flex items-center justify-center border-t border-gray-200 p-4 dark:border-gray-700">
-                                {/* <a 
+                                {/* <a
                   href={route('domains.index', { filter: 'expiring' })}
                   className="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
                 >
