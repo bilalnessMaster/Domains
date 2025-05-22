@@ -35,7 +35,7 @@ class DomainFactory extends Factory
             'for_sale' => $this->faker->boolean(30),
             'status' => $this->faker->randomElement(['active', 'expired', 'pending', 'sold']),
             'notes' => $this->faker->boolean(50) ? $this->faker->sentence(10) : null,
-            'user_id' => User::inRandomOrder()->first()->id ?? User::factory()->create()->id,
+            'user_id' => 4,
         ];
     }
 }

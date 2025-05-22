@@ -10,10 +10,9 @@ use Inertia\Inertia;
 class DomainController extends Controller
 {
 
-    public function show(Request $request)
-    {
-
-       $query = Domain::where('user_id', Auth::id());
+   public function show(Request $request)
+{
+    $query = Domain::where('user_id', Auth::id());
 
     // Apply search filter if search query exists
     if ($request->has('search')) {
@@ -21,34 +20,64 @@ class DomainController extends Controller
         $query->where('name', 'like', "%{$search}%");
     }
 
+    // Apply min length filter
+    if ($request->has('min_length')) {
+        $query->whereRaw('LENGTH(name) >= ?', [$request->min_length]);
+    }
+
+    // Apply max length filter
+    if ($request->has('max_length')) {
+        $query->whereRaw('LENGTH(name) <= ?', [$request->max_length]);
+    }
+
+    // Apply TLD filter
+    if ($request->has('tlds')) {
+        $tlds = explode(',', $request->tlds);
+        $tlds = array_map('trim', $tlds);
+        $tlds = array_map(function($tld) {
+            return ltrim($tld, '.'); // Remove leading dots if any
+        }, $tlds);
+        
+        $query->where(function($q) use ($tlds) {
+            foreach ($tlds as $tld) {
+                $q->orWhere('name', 'like', '%.' . $tld);
+            }
+        });
+    }
+
     // Paginate with 10 items per page
     $domains = $query->latest()->paginate(10);
 
-    // Append the search query to the pagination links
-    $domains->appends($request->only('search'));
+    // Append all query parameters to the pagination links
+    $domains->appends($request->query());
 
-        // Get summary statistics
-        $stats = [
-            'total' => Domain::where('user_id', Auth::user()->id)->count(),
-            'active' => Domain::where('user_id', Auth::user()->id)
-                ->where('status', 'active')->count(),
-            'expiring_soon' => Domain::where('user_id', Auth::user()->id)
-                ->where('expiry_date', '<=', now()->addDays(30))
-                ->count(),
-            'for_sale' => Domain::where('user_id', Auth::user()->id)
-                ->where('for_sale', true)->count(),
-        ];
+    // Get summary statistics (unchanged)
+    $stats = [
+        'total' => Domain::where('user_id', Auth::user()->id)->count(),
+        'active' => Domain::where('user_id', Auth::user()->id)
+            ->where('status', 'active')->count(),
+        'expiring_soon' => Domain::where('user_id', Auth::user()->id)
+            ->where('expiry_date', '<=', now()->addDays(30))
+            ->count(),
+        'for_sale' => Domain::where('user_id', Auth::user()->id)
+            ->where('for_sale', true)->count(),
+    ];
 
-        // Calculate total portfolio value
-        $totalValue = Domain::where('user_id', Auth::user()->id)
-            ->sum('current_value');
+    $totalProfit = Domain::where('user_id', Auth::user()->id)
+        ->where('status', 'sold')
+        ->get()
+        ->sum(function ($domain) {
+            return $domain->current_value - $domain->purchase_price;
+        });
 
-        return Inertia::render('dashboard', [
-            'domains' => $domains,
-            'stats' => $stats,
-            'totalValue' => $totalValue
-        ]);
-    }
+    return Inertia::render('dashboard', [
+        'domains' => $domains,
+        'stats' => $stats,
+        'totalValue' => $totalProfit,
+        "success" => $request->success,
+        "filters" => $request->only(['search', 'min_length', 'max_length', 'tlds'])
+    ]);
+}
     public function display()
     {
         return Inertia::render('auth/create-domain', []);
@@ -83,7 +112,7 @@ class DomainController extends Controller
             'for_sale' => $validated['for_sale'] ?? false,
             'status' => $validated['status'],
             'notes' => $validated['notes'],
-            'user_id' => Auth::user()->id, // Assign to currently authenticated user
+            'user_id' => Auth::user()->id,
         ]);
 
         // Redirect with success message
@@ -91,11 +120,10 @@ class DomainController extends Controller
             ->with('success', 'Domain created successfully!');
     }
 
-    public function affichage($id)
+    public function affichage(Domain $domain)
     {
-        $domain  = Domain::where('user_id', Auth::user()->id)->where('id', $id)->get();
         return Inertia::render('Edit', [
-            'domain' => $domain[0],
+            'domain' => $domain,
         ]);
     }
     public function update(Request $request, Domain $domain)
@@ -121,5 +149,9 @@ class DomainController extends Controller
         $domain->delete();
         return redirect()->route('dashboard')
             ->with('success', 'Domain deleted successfully');
+    }
+    public function test()
+    {
+        return 'bilal';
     }
 }
